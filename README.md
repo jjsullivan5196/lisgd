@@ -24,7 +24,7 @@ Configuration can be done in two ways:
 2. Through commandline flags which override the default config.h values
 
 ### Suckless-style config.h based configuration
-Example `config.def.h` configuration -- e.g. copy this to `config.h`:
+Copy the example `config.def.h` configuration to `config.h`.
 
 ### Commandline flags based configuration
 Flags:
@@ -39,6 +39,7 @@ Flags:
   - Example: `lisgd -v`
 
 Full commandline-based configuration example:
+
 ```
 lisgd -d /dev/input/input1 -g "1,left,right,notify-send swiped lr" -t 200 -v
 ```
