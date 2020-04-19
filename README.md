@@ -12,10 +12,10 @@ gesture events. The advantage of this is that the synthetic gestures
 you define via lisgd can be used on touchscreens, which normal libinput
 gestures don't support.
 
-This program was built for use on the [Pinephone](); however it could be
-used in general for any device that supports touch events, like laptop
-touchscreens or similar. You may want to adjust the threshold depending
-on the device you're using.
+This program was built for use on the [Pinephone](https://www.pine64.org/pinephone/);
+however it could be used in general for any device that supports touch events,
+like laptop touchscreens or similar. You may want to adjust the threshold
+depending on the device you're using.
 
 ## Configuration
 Configuration can be done in two ways:
@@ -28,6 +28,7 @@ Example `config.def.h` configuration -- e.g. copy this to `config.h`:
 
 ### Commandline flags based configuration
 Flags:
+
 - **-g [fingers,start,end,command]**: Defines a gestures wherein fingers is a integer, start/end are {l,r,d,u}, and command is the command to execute
   - Example: `lisgd -g "1,l,r,notify-send swiped lr" -g "1,r,l,noitfy-send swiped rl"`
 - **-d [devicenodepath]**: Defines the dev filesystem device to monitor
