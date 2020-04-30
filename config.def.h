@@ -10,11 +10,11 @@ char *device = "/dev/input/event1";
 /* Commands to execute upon recieving a swipe gesture */
 Gesture gestures[] = {
 	/* fingers 	start	end	command */
-	{ 1, 	Left,	Right,	  "xdotool key --clearmodifiers Alt+Shift+h" },
-	{ 1, 	Right,	Left,	  "xdotool key --clearmodifiers Alt+Shift+l" },
+	{ 1, 	Left,	Right,	  "xdotool key --clearmodifiers Alt+Shift+e" },
+	{ 1, 	Right,	Left,	  "xdotool key --clearmodifiers Alt+Shift+r" },
 
-	{ 2, 	Left,	Right,	  "xdotool key --clearmodifiers Alt+h" },
-	{ 2, 	Right,	Left,	  "xdotool key --clearmodifiers Alt+l" },
+	{ 2, 	Left,	Right,	  "xdotool key --clearmodifiers Alt+e" },
+	{ 2, 	Right,	Left,	  "xdotool key --clearmodifiers Alt+r" },
 
 	{ 2, 	Down,	Up,	  "pidof svkbd-sxmo || svkbd-sxmo &" },
 	{ 2, 	Up,	Down,	  "pkill -9 svkbd-sxmo" },
