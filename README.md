@@ -41,7 +41,7 @@ Flags:
 Full commandline-based configuration example:
 
 ```
-lisgd -d /dev/input/input1 -g "1,left,right,notify-send swiped lr" -t 200 -v
+lisgd -d /dev/input/input1 -g "1,l,r,notify-send swiped lr" -t 200 -v
 ```
 
 ### TODO
