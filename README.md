@@ -29,7 +29,7 @@ Copy the example `config.def.h` configuration to `config.h`.
 ### Commandline flags based configuration
 Flags:
 
-- **-g [fingers,start,end,command]**: Defines a gestures wherein fingers is a integer, start/end are {l,r,d,u}, and command is the command to execute
+- **-g [fingers,start,end,command]**: Defines a gesture wherein fingers is a integer, start/end are {l,r,d,u}, and command is the command to execute
   - Example: `lisgd -g "1,l,r,notify-send swiped lr" -g "1,r,l,noitfy-send swiped rl"`
 - **-d [devicenodepath]**: Defines the dev filesystem device to monitor
   - Example: `lisgd -d /dev/input/input1`
