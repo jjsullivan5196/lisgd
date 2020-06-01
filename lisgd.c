@@ -169,6 +169,7 @@ touchup(struct libinput_event *e)
 void
 run()
 {
+	int i;
 	struct libinput *li;
 	struct libinput_event *event;
 	struct libinput_event_touch *tevent;
@@ -189,6 +190,14 @@ run()
 		d, LIBINPUT_CONFIG_SEND_EVENTS_ENABLED
 	)) {
 		die("Couldn't set mode to capture events\n");
+	}
+
+	// E.g. initially invalidate every slot 
+	for (i = 0; i < MAXSLOTS; i++) {
+		xend[i] = INVALID;
+		yend[i] = INVALID;
+		xstart[i] = INVALID;
+		ystart[i] = INVALID;
 	}
 
 	FD_ZERO(&fdset);
