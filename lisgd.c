@@ -8,19 +8,29 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/select.h>
+#include <time.h>
 #include <unistd.h>
 
 /* Defines */
 #define MAXSLOTS 20
-#define INVALID -999999
+#define NOMOTION -999999
 
 /* Types */
-enum { Left, Right, Down, Up };
-typedef int direction;
+enum {
+  SwipeDU,
+  SwipeUD,
+  SwipeLR,
+  SwipeRL,
+  SwipeDLUR,
+  SwipeDRUL,
+  SwipeURDL,
+  SwipeULDR
+};
+
+typedef int Swipe;
 typedef struct {
-	int nfingers;
-	direction start;
-	direction end;
+	int nfswipe;
+	Swipe swipe;
 	char *command;
 } Gesture;
 
@@ -30,9 +40,10 @@ typedef struct {
 /* Globals */
 Gesture *gestsarr;
 int gestsarrlen;
-direction pendingstart, pendingend;
+Swipe pendingswipe;
 double xstart[MAXSLOTS], xend[MAXSLOTS], ystart[MAXSLOTS], yend[MAXSLOTS];
-unsigned fingsdown = 0, fingspending = 0;
+unsigned nfdown = 0, nfpendingswipe = 0;
+struct timespec timedown;
 
 void
 die(char * msg)
@@ -45,6 +56,57 @@ void
 execcommand(char *c)
 {
 	system(c);
+}
+
+int
+gesturecalculateswipewithindegrees(double gestdegrees, double wantdegrees) {
+	return (
+		gestdegrees >= wantdegrees - degreesleniency &&
+		gestdegrees <= wantdegrees + degreesleniency
+	);
+}
+
+Swipe
+gesturecalculateswipe(double x0, double y0, double x1, double y1) {
+	double t, degrees, dist;
+
+	t = atan2(x1 - x0, y0 - y1);
+	degrees = 57.2957795130823209 * (t < 0 ? t + 6.2831853071795865 : t);
+	dist = sqrt(pow(x1 - x0, 2) + pow(y1 - y0, 2));
+
+	if (verbose)
+		fprintf(stderr, "Swipe distance=[%.2f]; degrees=[%.2f]\n", dist, degrees);
+
+	if (dist < distancethreshold) return -1;
+	else if (gesturecalculateswipewithindegrees(degrees, 0))   return SwipeDU;
+	else if (gesturecalculateswipewithindegrees(degrees, 45))  return SwipeDLUR;
+	else if (gesturecalculateswipewithindegrees(degrees, 90))  return SwipeLR;
+	else if (gesturecalculateswipewithindegrees(degrees, 135)) return SwipeULDR;
+	else if (gesturecalculateswipewithindegrees(degrees, 180)) return SwipeUD;
+	else if (gesturecalculateswipewithindegrees(degrees, 225)) return SwipeURDL;
+	else if (gesturecalculateswipewithindegrees(degrees, 270)) return SwipeRL;
+	else if (gesturecalculateswipewithindegrees(degrees, 315)) return SwipeDRUL;
+	else if (gesturecalculateswipewithindegrees(degrees, 360)) return SwipeDU;
+
+	return -1;
+}
+
+void
+gestureexecute(Swipe swipe, int nfingers) {
+	int i;
+
+	for (i = 0; i < gestsarrlen; i++) {
+		if (verbose) {
+			fprintf(stderr, 
+				"[Nfswipe/SwipeId]: Cfg (%d/%d) <=> Evt (%d/%d)\n", 
+				gestsarr[i].nfswipe, gestsarr[i].swipe, nfingers, swipe
+			);
+		}
+		if (gestsarr[i].nfswipe == nfingers && gestsarr[i].swipe == swipe) {
+			if (verbose) fprintf(stderr, "Execute %s\n", gestsarr[i].command);
+			execcommand(gestsarr[i].command);
+		}
+	}
 }
 
 static int 
@@ -60,18 +122,37 @@ libinputcloserestricted(int fd, void *user_data)
 	close(fd);
 }
 
+Swipe
+swipereorient(Swipe swipe, int orientation) {
+	while (orientation > 0) {
+		switch(swipe) {
+			// 90deg per turn so: L->U, R->D, U->R, D->L
+			case SwipeDU:   swipe = SwipeLR; break;
+			case SwipeDLUR: swipe = SwipeULDR; break;
+			case SwipeLR:   swipe = SwipeUD; break;
+			case SwipeULDR: swipe = SwipeURDL; break;
+			case SwipeUD:   swipe = SwipeRL; break;
+			case SwipeURDL: swipe = SwipeDRUL; break;
+			case SwipeRL:   swipe = SwipeDU; break;
+			case SwipeDRUL: swipe = SwipeDLUR; break;
+		}
+		orientation--;
+	}
+	return swipe;
+}
+
 void
 touchdown(struct libinput_event *e)
 {
 	struct libinput_event_touch *tevent;
 	int slot;
-	
+
 	tevent = libinput_event_get_touch_event(e);
 	slot = libinput_event_touch_get_slot(tevent);
-
 	xstart[slot] = libinput_event_touch_get_x(tevent);
 	ystart[slot] = libinput_event_touch_get_y(tevent);
-	fingsdown++;
+	if (nfdown == 0) clock_gettime(CLOCK_MONOTONIC_RAW, &timedown);
+	nfdown++;
 }
 
 void
@@ -79,6 +160,7 @@ touchmotion(struct libinput_event *e)
 {
 	struct libinput_event_touch *tevent;
 	int slot;
+	double x, y;
 
 	tevent = libinput_event_get_touch_event(e);
 	slot = libinput_event_touch_get_slot(tevent);
@@ -87,82 +169,47 @@ touchmotion(struct libinput_event *e)
 }
 
 void
+resetslot(int slot) {
+	xend[slot] = NOMOTION;
+	yend[slot] = NOMOTION;
+	xstart[slot] = NOMOTION;
+	ystart[slot] = NOMOTION;
+}
+
+void
 touchup(struct libinput_event *e)
 {
-	struct libinput_event_touch *tevent;
-	direction start;
-	direction end;
 	int i;
 	int slot;
+	struct libinput_event_touch *tevent;
+	struct timespec now;
 
 	tevent = libinput_event_get_touch_event(e);
 	slot = libinput_event_touch_get_slot(tevent);
+	nfdown--;
+	clock_gettime(CLOCK_MONOTONIC_RAW, &now);
 
-	fingsdown--;
-	if (xend[slot] == INVALID || xstart[slot] == INVALID) return;
+	// E.g. invalid motion, it didn't begin/end from anywhere
+	if (
+		xstart[slot] == NOMOTION || ystart[slot] == NOMOTION ||
+		xend[slot] == NOMOTION || yend[slot] == NOMOTION
+	) return;
 
-	if (verbose) {
-		fprintf(
-			stderr, 
-			"(%d down fingers) (%d pending fingers) [start: x %lf y %lf] to [end x %lf y %lf]\n", 
-			fingsdown, fingspending, xstart[slot], ystart[slot], xend[slot], yend[slot]
-		);
-	}
+	Swipe swipe = gesturecalculateswipe(
+		xstart[slot], ystart[slot], xend[slot], yend[slot]
+	);
+	if (nfpendingswipe == 0) pendingswipe = swipe;
+	if (pendingswipe == swipe) nfpendingswipe++;
+	resetslot(slot);
 
-	if (xend[slot] > xstart[slot] && fabs(xend[slot] - xstart[slot]) > threshold) {
-		start = Left;
-		end = Right;
-	} else if (xend[slot] < xstart[slot] && fabs(xend[slot] - xstart[slot]) > threshold) {
-		start = Right;
-		end = Left;
-	} else if (yend[slot] > ystart[slot] && fabs(yend[slot] - ystart[slot]) > threshold) {
-		start = Up;
-		end = Down;
-	} else if (yend[slot] < ystart[slot] && fabs(yend[slot] - ystart[slot]) > threshold) {
-		start = Down;
-		end = Up;
-	} else {
-		if (verbose) {
-			fprintf(stderr, "Input didn't match a known gesture\n");
-		}
-		start = INVALID;
-		end = INVALID;
-	}
-
-	if (fingspending == 0) {
-		pendingstart = start;
-		pendingend = end;
-	}
-	if (pendingstart == start && pendingend == end)	{
-		fingspending++;
-	}
-
-	xend[slot] = INVALID;
-	yend[slot] = INVALID;
-	xstart[slot] = INVALID;
-	ystart[slot] = INVALID;
-	
-	if (fingsdown == 0) {
-		for (i = 0; i < gestsarrlen; i++) {
-			if (verbose) {
-				fprintf(stderr, 
-					"[Fingers/Start/End]: Cfg (%d/%d/%d) <=> Evt (%d/%d/%d)\n", 
-					gestsarr[i].nfingers, gestsarr[i].start, gestsarr[i].end, 
-					fingspending, pendingstart, pendingend
-				);
-			}
-			if (
-				gestsarr[i].nfingers == fingspending && 
-				gestsarr[i].start == pendingstart &&
-				gestsarr[i].end == pendingend
-			) {
-				if (verbose) {
-					fprintf(stderr, "Execute %s\n", gestsarr[i].command);
-				}
-				execcommand(gestsarr[i].command);
-			}
-		}
-		fingspending = 0;
+	// All fingers up - check if within milisecond limit, exec, & reset
+	if (nfdown == 0) {
+		if (
+			timeoutms > 
+			((now.tv_sec - timedown.tv_sec) * 1000000 + (now.tv_nsec - timedown.tv_nsec) / 1000) / 1000
+		) gestureexecute(swipe, nfpendingswipe);
+		
+		nfpendingswipe = 0;
 	}
 }
 
@@ -194,10 +241,10 @@ run()
 
 	// E.g. initially invalidate every slot 
 	for (i = 0; i < MAXSLOTS; i++) {
-		xend[i] = INVALID;
-		yend[i] = INVALID;
-		xstart[i] = INVALID;
-		ystart[i] = INVALID;
+		xend[i] = NOMOTION;
+		yend[i] = NOMOTION;
+		xstart[i] = NOMOTION;
+		ystart[i] = NOMOTION;
 	}
 
 	FD_ZERO(&fdset);
@@ -239,29 +286,36 @@ main(int argc, char *argv[])
 		} else if (!strcmp(argv[i], "-d")) {
 			device = argv[++i];
 		} else if (!strcmp(argv[i], "-t")) {
-			threshold = atoi(argv[++i]);
+			distancethreshold = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-r")) {
+			degreesleniency = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-m")) {
+			timeoutms = atoi(argv[++i]);
+		} else if (!strcmp(argv[i], "-o")) {
+			orientation = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "-g")) {
 			gestsarrlen++;
 			realloc(gestsarr, (gestsarrlen * sizeof(Gesture)));
 			gestpt = strtok(argv[++i], ",");
-			for (j = 0; gestpt != NULL && j < 4;	gestpt = strtok(NULL, ","), j++) {
+			for (j = 0; gestpt != NULL && j < 3;	gestpt = strtok(NULL, ","), j++) {
 				switch(j) {
-					case 0: gestsarr[gestsarrlen - 1].nfingers = atoi(gestpt); break;
+					case 0: gestsarr[gestsarrlen - 1].nfswipe = atoi(gestpt); break;
 					case 1: 
-						if (!strcmp(gestpt, "l")) gestsarr[gestsarrlen-1].start = Left;
-						if (!strcmp(gestpt, "r")) gestsarr[gestsarrlen-1].start = Right;
-						if (!strcmp(gestpt, "d")) gestsarr[gestsarrlen-1].start = Down;
-						if (!strcmp(gestpt, "u")) gestsarr[gestsarrlen-1].start = Up;
+						if (!strcmp(gestpt, "LR")) gestsarr[gestsarrlen-1].swipe = SwipeLR;
+						if (!strcmp(gestpt, "RL")) gestsarr[gestsarrlen-1].swipe = SwipeRL;
+						if (!strcmp(gestpt, "DU")) gestsarr[gestsarrlen-1].swipe = SwipeDU;
+						if (!strcmp(gestpt, "UD")) gestsarr[gestsarrlen-1].swipe = SwipeUD;
+						if (!strcmp(gestpt, "DLUR")) gestsarr[gestsarrlen-1].swipe = SwipeDLUR;
+						if (!strcmp(gestpt, "URDL")) gestsarr[gestsarrlen-1].swipe = SwipeURDL;
+						if (!strcmp(gestpt, "ULDR")) gestsarr[gestsarrlen-1].swipe = SwipeULDR;
+						if (!strcmp(gestpt, "DRUL")) gestsarr[gestsarrlen-1].swipe = SwipeDRUL;
 						break;
-					case 2: 
-						if (!strcmp(gestpt, "l")) gestsarr[gestsarrlen-1].end = Left;
-						if (!strcmp(gestpt, "r")) gestsarr[gestsarrlen-1].end = Right;
-						if (!strcmp(gestpt, "d")) gestsarr[gestsarrlen-1].end = Down;
-						if (!strcmp(gestpt, "u")) gestsarr[gestsarrlen-1].end = Up;
-						break;
-					case 3: gestsarr[gestsarrlen - 1].command = gestpt; break;
+					case 2: gestsarr[gestsarrlen - 1].command = gestpt; break;
 				}
 			}
+		} else {
+			fprintf(stderr, "lisgd [-v] [-d /dev/input/0] [-o 0] [-t 200] [-r 20] [-m 400] [-g '1,LR,notify-send swiped left to right']\n");
+			exit(1);
 		}
 	}
 
@@ -271,6 +325,10 @@ main(int argc, char *argv[])
 		gestsarrlen = sizeof(gestures) / sizeof(Gesture);
 		memcpy(gestsarr, gestures, sizeof(gestures));
 	}
+
+  // Modify gestures swipes based on orientation provided
+	for (i = 0; i < gestsarrlen; i++)
+		gestsarr[i].swipe = swipereorient(gestsarr[i].swipe, orientation);
 
 	run();
 	return 0;

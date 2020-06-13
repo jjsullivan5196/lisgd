@@ -44,7 +44,3 @@ Full commandline-based configuration example:
 ```
 lisgd -d /dev/input/input1 -g "1,l,r,notify-send swiped lr" -t 200 -v
 ```
-
-### TODO
-- Diagnol swipe gestures
-- Gestures recognition based on screenspace executed in
