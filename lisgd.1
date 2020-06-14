@@ -5,21 +5,22 @@ lisgd \- libinput synthetic gesture daemon
 
 .SH SYNOPSIS
 .B lisgd
+[\fB\-d\fR \fIdevicepath\fR]
+[\fB\-g\fR \fIgesturespec\fR]...
 [\fB\-t\fR \fIthreshold\fR]
-[\fB\-d\fR \fIdegreesofleniency\fR]
 [\fB\-m\fR \fItimeoutms\fR]
 [\fB\-o\fR \fIorientation\fR]
-[\fB\-v\fR \fIverbose\fR]
-[\fB\-g\fR \fIgesturespec\fR]...
+[\fB\-r\fR \fIdegreesofleniency\fR]
+[\fB\-v]
 
 
 .SH DESCRIPTION
 .B lisgd
-(or libinput **synthetic** gesture daemon) lets you bind gestures based on
+(or libinput synthetic gesture daemon) lets you bind gestures based on
 libinput touch events to run specific commands to execute. For example,
 dragging left to right with one finger could execute a particular command
 like launching a terminal. Directional L-R, R-L, U-D, and D-U gestures and
-diagnoal LD-RU, RD-LU, UR-DL, UL-DR gestures are supported with 1 through 
+diagnol LD-RU, RD-LU, UR-DL, UL-DR gestures are supported with 1 through 
 n fingers.
 
 Unlike other libinput gesture daemons, lisgd uses touch events to
@@ -40,9 +41,22 @@ you're using.
 Path of the dev filesystem device to monitor (like /dev/input/event1).
 
 .TP
-.BR \-t ", " \-t\ distancethreshold\fR
-Threshold in libinput units (pixels) after which a gesture registers. Defaults
-to 300.
+.BR \-g ", " \-g\ nfingers,gesture,command\fR
+Allow you to bind a gesture wherein nfingers is an integer, gesture is 
+one of {LR,RL,DU,UD,DLUR,URDL,ULDR,DLUR}, and the shell command to be executed.
+
+The -g option can be used multiple times to bind multiple gestures.
+
+.TP
+.BR \-m ", " \-m\ timeoutms\fR
+Number of milliseconds gestures must be performed within to be registered. After
+the timeoutms value; the gesture won't be registered.
+
+.TP
+.BR \-o ", " \-o\ orientation\fR
+Number of 90-degree rotations to translate gestures by. Can be set to 0-3. For
+example using 1; a L-R gesture would become a U-D gesture. Meant to be used
+for screen-rotation.
 
 .TP
 .BR \-r ", " \-r\ degreesofleniency\fR
@@ -51,20 +65,14 @@ Maximum value is 45. Default value is 15. E.g. U-D is a 180 degree gesture
 but with 15 degrees of leniency will be recognized between 165-195 degrees.
 
 .TP
-.BR \-m ", " \-m\ timeoutms\fR
-Number of milliseconds gestures must be performed within to be registered. After
-the timeoutms value; the gesture won't be registered.
+.BR \-t ", " \-t\ distancethreshold\fR
+Threshold in libinput units (pixels) after which a gesture registers. Defaults
+to 300.
 
 .TP
 .BR \-v \fR
 Enables verbose mode which prints debugging messages.
 
-.TP
-.BR \-g ", " \-g\ nfingers,gesture,command\fR
-Allow you to bind a gesture wherein nfingers is an integer, gesture is 
-one of {LR,RL,DU,UD,DLUR,URDL,ULDR,DLUR}, and the shell command to be executed.
-
-The -g option can be used multiple times to bind multiple gestures.
 
 .SH SEE ALSO
 lisgd was built as part of Sxmo; an project to create a Pinephone UI out of
