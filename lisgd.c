@@ -160,7 +160,6 @@ touchmotion(struct libinput_event *e)
 {
 	struct libinput_event_touch *tevent;
 	int slot;
-	double x, y;
 
 	tevent = libinput_event_get_touch_event(e);
 	slot = libinput_event_touch_get_slot(tevent);
