@@ -48,7 +48,7 @@ struct timespec timedown;
 void
 die(char * msg)
 {
-	fprintf(stderr, msg);
+	fprintf(stderr, "%s\n", msg);
 	exit(1);
 }
 
@@ -231,11 +231,11 @@ run()
 	li = libinput_path_create_context(&interface, NULL);
 
 	if ((d = libinput_path_add_device(li, device)) == NULL) {
-		die("Couldn't bind event from dev filesystem\n");
+		die("Couldn't bind event from dev filesystem");
 	} else if (LIBINPUT_CONFIG_STATUS_SUCCESS != libinput_device_config_send_events_set_mode(
 		d, LIBINPUT_CONFIG_SEND_EVENTS_ENABLED
 	)) {
-		die("Couldn't set mode to capture events\n");
+		die("Couldn't set mode to capture events");
 	}
 
 	// E.g. initially invalidate every slot 
@@ -251,7 +251,7 @@ run()
 	for (;;) {
 		selectresult = select(FD_SETSIZE, &fdset, NULL, NULL, NULL);
 		if (selectresult == -1) {
-			die("Can't select on device node?\n");
+			die("Can't select on device node?");
 		} else {
 			libinput_dispatch(li);
 			while ((event = libinput_get_event(li)) != NULL) {
