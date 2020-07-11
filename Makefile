@@ -1,6 +1,6 @@
 SRC = lisgd.c
 OBJ = ${SRC:.c=.o}
-LDFLAGS = -linput
+LDFLAGS = -linput -lm
 
 all: options lisgd
 
