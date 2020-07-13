@@ -294,12 +294,11 @@ main(int argc, char *argv[])
 			orientation = atoi(argv[++i]);
 		} else if (!strcmp(argv[i], "-g")) {
 			gestsarrlen++;
-			void *ptr = realloc(gestsarr, (gestsarrlen * sizeof(Gesture)));
-			if ( ptr == NULL ) {
+			gestsarr = realloc(gestsarr, (gestsarrlen * sizeof(Gesture)));
+			if (gestsarr == NULL) {
 				perror("Could not allocate memory");
 				exit(EXIT_FAILURE);
 			}
-			gestsarr = ptr;
 			gestpt = strtok(argv[++i], ",");
 			for (j = 0; gestpt != NULL && j < 3;	gestpt = strtok(NULL, ","), j++) {
 				switch(j) {
