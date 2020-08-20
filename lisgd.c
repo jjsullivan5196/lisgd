@@ -39,10 +39,12 @@ typedef struct {
 
 /* Globals */
 Gesture *gestsarr;
+Gesture *originalgestures;
 int gestsarrlen;
 Swipe pendingswipe;
 double xstart[MAXSLOTS], xend[MAXSLOTS], ystart[MAXSLOTS], yend[MAXSLOTS];
 unsigned nfdown = 0, nfpendingswipe = 0;
+unsigned orientationdirty = 0;
 struct timespec timedown;
 
 void
@@ -142,6 +144,22 @@ swipereorient(Swipe swipe, int orientation) {
 }
 
 void
+reorientgestures(int orientation) {
+	for (int i = 0; i < gestsarrlen; i++)
+		gestsarr[i].swipe = swipereorient(originalgestures[i].swipe, orientation);
+}
+
+void
+changeorientation(int _signal, siginfo_t *info, void *_none) {
+	int new_orientation = (info->si_value).sival_int;
+
+	if (orientation != new_orientation) {
+		orientation = new_orientation;
+		orientationdirty = 1;
+	}
+}
+
+void
 touchdown(struct libinput_event *e)
 {
 	struct libinput_event_touch *tevent;
@@ -213,6 +231,18 @@ touchup(struct libinput_event *e)
 }
 
 void
+registerorientchange() {
+	struct sigaction action;
+
+	action.sa_flags = SA_SIGINFO;
+	action.sa_sigaction = &changeorientation;
+
+	if(sigaction(SIGUSR1, &action, NULL) == -1) {
+		die("Couldn't register reorient signal action.");
+	}
+}
+
+void
 run()
 {
 	int i;
@@ -255,6 +285,10 @@ run()
 		} else {
 			libinput_dispatch(li);
 			while ((event = libinput_get_event(li)) != NULL) {
+				if (orientationdirty) {
+					reorientgestures(orientation);
+					orientationdirty = 0;
+				}
 				switch(libinput_event_get_type(event)) {
 					case LIBINPUT_EVENT_TOUCH_DOWN: touchdown(event); break;
 					case LIBINPUT_EVENT_TOUCH_UP: touchup(event); break;
@@ -329,9 +363,15 @@ main(int argc, char *argv[])
 		memcpy(gestsarr, gestures, sizeof(gestures));
 	}
 
-  // Modify gestures swipes based on orientation provided
-	for (i = 0; i < gestsarrlen; i++)
-		gestsarr[i].swipe = swipereorient(gestsarr[i].swipe, orientation);
+	// Save original gestures for runtime orientation change
+	originalgestures = malloc(sizeof(Gesture) * gestsarrlen);
+	memcpy(originalgestures, gestsarr, sizeof(Gesture) * gestsarrlen);
+
+	// Modify gestures swipes based on orientation provided
+	reorientgestures(orientation);
+
+	// Change orientation at runtime (via SIGUSR1)
+	registerorientchange();
 
 	run();
 	return 0;
