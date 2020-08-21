@@ -3,6 +3,7 @@
 #include <libinput.h>
 #include <math.h>
 #include <signal.h>
+#include <sys/signalfd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -230,16 +231,23 @@ touchup(struct libinput_event *e)
 	}
 }
 
-void
-registerorientchange() {
-	struct sigaction action;
+int
+sigusr1fd() {
+	sigset_t mask;
+	int sfd;
 
-	action.sa_flags = SA_SIGINFO;
-	action.sa_sigaction = &changeorientation;
-
-	if(sigaction(SIGUSR1, &action, NULL) == -1) {
-		die("Couldn't register reorient signal action.");
+	sigemptyset(&mask);
+	sigaddset(&mask, SIGUSR1);
+	if (sigprocmask(SIG_BLOCK, &mask, NULL) == -1) {
+		die("Can't block SIGUSR1.");
 	}
+
+	sfd = signalfd(-1, &mask, 0);
+	if (sfd == -1) {
+		die("Can't open signalfd on SIGUSR1.");
+	}
+
+	return sfd;
 }
 
 void
@@ -251,7 +259,12 @@ run()
 	struct libinput_event_touch *tevent;
 	struct libinput_device *d;
 	int selectresult;
+
 	fd_set fdset;
+	int li_fd;
+	int sig_fd;
+	int sfdrsize;
+	struct signalfd_siginfo sfdinfo;
 
 	const static struct libinput_interface interface = {
 		.open_restricted = libinputopenrestricted,
@@ -276,25 +289,37 @@ run()
 		ystart[i] = NOMOTION;
 	}
 
-	FD_ZERO(&fdset);
-	FD_SET(libinput_get_fd(li), &fdset);
+	sig_fd = sigusr1fd();
+	li_fd = libinput_get_fd(li);
+
 	for (;;) {
+		FD_ZERO(&fdset);
+		FD_SET(sig_fd, &fdset);
+		FD_SET(li_fd, &fdset);
 		selectresult = select(FD_SETSIZE, &fdset, NULL, NULL, NULL);
+
 		if (selectresult == -1) {
 			die("Can't select on device node?");
-		} else {
-			libinput_dispatch(li);
-			while ((event = libinput_get_event(li)) != NULL) {
-				if (orientationdirty) {
-					reorientgestures(orientation);
-					orientationdirty = 0;
+		}
+		else {
+			if (FD_ISSET(sig_fd, &fdset)) {
+				sfdrsize = read(sig_fd, &sfdinfo, sizeof(struct signalfd_siginfo));
+
+				if (sfdrsize != sizeof(struct signalfd_siginfo)) {
+					die("Couldn't read reorient signal.");
 				}
-				switch(libinput_event_get_type(event)) {
-					case LIBINPUT_EVENT_TOUCH_DOWN: touchdown(event); break;
-					case LIBINPUT_EVENT_TOUCH_UP: touchup(event); break;
-					case LIBINPUT_EVENT_TOUCH_MOTION: touchmotion(event); break;
+				reorientgestures(sfdinfo.ssi_int);
+			}
+			if (FD_ISSET(li_fd, &fdset)) {
+				libinput_dispatch(li);
+				while ((event = libinput_get_event(li)) != NULL) {
+					switch(libinput_event_get_type(event)) {
+						case LIBINPUT_EVENT_TOUCH_DOWN: touchdown(event); break;
+						case LIBINPUT_EVENT_TOUCH_UP: touchup(event); break;
+						case LIBINPUT_EVENT_TOUCH_MOTION: touchmotion(event); break;
+					}
+					libinput_event_destroy(event);
 				}
-				libinput_event_destroy(event);
 			}
 		}
 	}
@@ -369,9 +394,6 @@ main(int argc, char *argv[])
 
 	// Modify gestures swipes based on orientation provided
 	reorientgestures(orientation);
-
-	// Change orientation at runtime (via SIGUSR1)
-	registerorientchange();
 
 	run();
 	return 0;
